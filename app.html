@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuietFile - document the noise, win the complaint</title>
+<style>
+  :root { --ink:#1c2b26; --muted:#6b7a73; --accent:#2f6f5e; --accent-dk:#265c4e; --card:#ffffff; --bg:#f4f6f3; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:680px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:28px; margin:0 0 6px; }
+  h2 { font-size:18px; margin:0 0 10px; }
+  .tag { color:var(--muted); margin:0 0 20px; line-height:1.45; }
+  .card { background:var(--card); border:1px solid #e3e8e4; border-radius:14px; padding:18px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  input, select { padding:9px 10px; border:1px solid #d4dcd6; border-radius:8px; font-size:15px; background:#fff; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:15px; cursor:pointer; }
+  button:hover { background:var(--accent-dk); }
+  button.ghost { background:#eef1ee; color:var(--ink); }
+  button.ghost:hover { background:#e2e7e2; }
+  .stats { display:flex; gap:22px; flex-wrap:wrap; }
+  .stat b { display:block; font-size:24px; }
+  .stat span { color:var(--muted); font-size:13px; }
+  .bars { display:flex; gap:2px; align-items:flex-end; height:56px; margin-top:14px; }
+  .bar { flex:1; background:var(--accent); border-radius:2px 2px 0 0; min-height:2px; opacity:.85; position:relative; }
+  .bar .lbl { position:absolute; bottom:-16px; left:50%; transform:translateX(-50%); font-size:9px; color:var(--muted); }
+  .bar-wrap { margin-bottom:22px; }
+  .empty { color:var(--muted); text-align:center; padding:14px 0 4px; }
+  #reportOut { white-space:pre-wrap; background:#f8faf8; border:1px solid #e3e8e4; border-radius:10px; padding:14px; font-size:12.5px; line-height:1.6; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; max-height:320px; overflow:auto; }
+  .hidden { display:none; }
+  .logline { font-size:13px; color:var(--muted); padding:4px 0; border-top:1px solid #eef1ee; display:flex; justify-content:space-between; }
+  .rm { font-size:12px; color:var(--muted); background:none; padding:2px 6px; }
+  .rm:hover { color:#8f3a33; text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>QuietFile</h1>
+  <p class="tag">"I've heard some noise" loses to "I'm so sorry, I'll keep it down." A timestamped log with patterns wins. Log each disturbance in ten seconds; QuietFile builds the evidence report your landlord, HOA, or property manager can't brush off.</p>
+
+  <div class="card">
+    <h2>Log a disturbance</h2>
+    <div class="row">
+      <div><label for="type">Type</label>
+        <select id="type">
+          <option>music</option><option>party</option><option>stomping</option>
+          <option>drilling</option><option>barking</option><option>shouting</option><option>other</option>
+        </select></div>
+      <div><label for="minutes">Lasted (min)</label><input type="number" id="minutes" min="1" value="30" style="width:90px"></div>
+      <button id="addBtn">Log now</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label for="unit">Your unit (for the report)</label><input type="text" id="unit" placeholder="Unit 4B" style="width:120px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The pattern</h2>
+    <div class="empty" id="emptyMsg">Nothing logged yet. The next 2 AM bass drop is your first data point.</div>
+    <div id="statsWrap" class="hidden">
+      <div class="stats">
+        <div class="stat"><b id="sIncidents">0</b><span>incidents</span></div>
+        <div class="stat"><b id="sNights">0</b><span>nights affected</span></div>
+        <div class="stat"><b id="sPerNight">0</b><span>per night</span></div>
+        <div class="stat"><b id="sMinutes">0</b><span>total minutes</span></div>
+      </div>
+      <div class="bar-wrap">
+        <div class="bars" id="bars"></div>
+      </div>
+      <div style="color:var(--muted); font-size:13px" id="worstLine"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <h2>The report</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="buildBtn">Build the report</button>
+      <button class="ghost" id="copyBtn">Copy</button>
+    </div>
+    <div id="reportOut" class="hidden"></div>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+(function(){
+  var E = QuietFileEngine;
+  var entries = [];
+  try { entries = JSON.parse(localStorage.getItem('quietfile') || '[]'); } catch(e){}
+  var $ = function(id){ return document.getElementById(id); };
+  var TZ = new Date().getTimezoneOffset();
+  function save(){ localStorage.setItem('quietfile', JSON.stringify(entries)); }
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function render(){
+    $('emptyMsg').style.display = entries.length ? 'none' : 'block';
+    $('statsWrap').classList.toggle('hidden', !entries.length);
+    if (entries.length){
+      var nights = E.nightsAffected(entries, TZ);
+      $('sIncidents').textContent = entries.length;
+      $('sNights').textContent = nights;
+      $('sPerNight').textContent = (entries.length / nights).toFixed(1);
+      $('sMinutes').textContent = E.totalMinutes(entries);
+      var hist = E.hourHistogram(entries, TZ);
+      var max = Math.max.apply(null, hist);
+      var bh = '';
+      for (var h = 0; h < 24; h++){
+        var pct = max ? Math.round(hist[h] / max * 100) : 0;
+        var lbl = (h % 6 === 0) ? '<span class="lbl">' + h + '</span>' : '';
+        bh += '<div class="bar" style="height:' + Math.max(pct, 3) + '%" title="' + h + ':00 - ' + hist[h] + ' incidents">' + lbl + '</div>';
+      }
+      $('bars').innerHTML = bh;
+      var worst = E.worstHours(entries, TZ);
+      var wp = [];
+      for (var i = 0; i < worst.length; i++) wp.push(E.fmtHour(worst[i].hour) + ' (' + worst[i].count + ')');
+      $('worstLine').textContent = worst.length ? 'Worst hours: ' + wp.join(', ') : '';
+    }
+    var sorted = entries.slice().sort(function(a, b){ return b.ts - a.ts; }).slice(0, 8);
+    var lh = '';
+    for (var j = 0; j < sorted.length; j++){
+      var e2 = sorted[j];
+      lh += '<div class="logline"><span>' + E.localDateStr(e2.ts, TZ) + ' ' + E.fmtHour(E.localHour(e2.ts, TZ))
+        + ' - ' + esc(e2.type) + ', ' + e2.minutes + ' min</span>'
+        + '<button class="rm" data-ts="' + e2.ts + '">remove</button></div>';
+    }
+    $('log').innerHTML = lh;
+    var rms = document.querySelectorAll('#log .rm');
+    for (var k = 0; k < rms.length; k++){
+      rms[k].addEventListener('click', function(){
+        var ts = parseInt(this.getAttribute('data-ts'), 10);
+        for (var m = 0; m < entries.length; m++){
+          if (entries[m].ts === ts){ entries.splice(m, 1); break; }
+        }
+        save(); render();
+      });
+    }
+  }
+
+  $('addBtn').addEventListener('click', function(){
+    var mins = parseInt($('minutes').value, 10);
+    if (isNaN(mins) || mins < 1) return;
+    entries.push({ ts: Date.now(), type: $('type').value, minutes: mins });
+    save(); render();
+  });
+  $('buildBtn').addEventListener('click', function(){
+    $('reportOut').textContent = E.buildReport(entries, TZ, $('unit').value.trim());
+    $('reportOut').classList.remove('hidden');
+  });
+  $('copyBtn').addEventListener('click', function(){
+    var t = $('reportOut').textContent;
+    if (t && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
