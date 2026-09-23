@@ -87,7 +87,7 @@
     var last = entries.reduce(function(a, b){ return a.ts > b.ts ? a : b; });
     var lines = [];
     lines.push('NOISE DISTURBANCE LOG' + (unit ? ' - ' + unit : ''));
-    lines.push('Period: ' + localDateStr(first.ts, tzOffsetMin) + ' to ' + localDateStr(last.ts, tzOffsetMin) + ' (' + span + ' days)');
+    lines.push('Period: ' + localDateStr(first.ts, tzOffsetMin) + ' to ' + localDateStr(last.ts, tzOffsetMin) + ' (' + span + ' day' + (span === 1 ? '' : 's') + ')');
     lines.push('Incidents: ' + entries.length + ' across ' + nights + ' nights (' + perNight + ' per affected night)');
     lines.push('Total disturbance time: ' + mins + ' minutes');
     var tparts = [];
